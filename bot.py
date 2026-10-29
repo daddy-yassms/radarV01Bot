@@ -1,6 +1,9 @@
 import logging
 import requests
 import sqlite3
+import os
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import date
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
@@ -14,7 +17,23 @@ DB_NAME = "users.db"
 
 
 # ---------------------------------------------------------
-# 1. إدارة قاعدة البيانات والحدود اليومية
+# سيرفر وهمي لتفعيل الباقة المجانية على Render
+# ---------------------------------------------------------
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running!")
+
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    server.serve_forever()
+
+
+# ---------------------------------------------------------
+# 1. إدارة قاعدة البيانات
 # ---------------------------------------------------------
 def init_db():
     conn = sqlite3.connect(DB_NAME)
@@ -65,7 +84,7 @@ def check_and_update_limit(user_id: int, max_limit: int = 3) -> tuple[bool, int]
 
 
 # ---------------------------------------------------------
-# 2. دالة سحب بيانات يوتيوب API
+# 2. دالة يوتيوب API
 # ---------------------------------------------------------
 def get_youtube_stats(channel_query):
     clean_query = channel_query.replace("@", "").strip()
@@ -94,7 +113,7 @@ def get_youtube_stats(channel_query):
 
 
 # ---------------------------------------------------------
-# 3. معالجة الأوامر والتفاعل
+# 3. معالجة الأوامر
 # ---------------------------------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -154,6 +173,9 @@ async def process_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 if __name__ == '__main__':
+    # تشغيل السيرفر الوهمي في خلفية البرنامج
+    threading.Thread(target=run_health_check_server, daemon=True).start()
+
     init_db()
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 
@@ -161,5 +183,5 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(button_handler))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, process_message))
 
-    print("البوت يعمل بالبيانات الحية ونظام الحدود...")
+    print("البوت يعمل بالبيانات الحية والسيرفر الوهمي...")
     app.run_polling()
